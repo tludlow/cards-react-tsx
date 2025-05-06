@@ -7,6 +7,7 @@ import {
   GameState,
   Hand,
   GameResult,
+  rankNums,
 } from "./types";
 
 //UI Elements
@@ -59,15 +60,90 @@ const setupGame = (): GameState => {
 
 //Scoring
 const calculateHandScore = (hand: Hand): number => {
-  return 0;
+  let aceCount = 0;
+  let score = 0;
+
+  for (const card of hand) {
+    let cardScore = rankNums[card.rank];
+
+    if (cardScore === 'ace') {
+      score = score + 11;
+      aceCount = aceCount + 1;
+    } else {
+      score = score + Number(cardScore);
+    }
+  }
+
+  // We have been greedy up until this point assuming every ace can be 11.
+  // We can easily be in a position now where we have gone bust. So let's "discount"
+  // as many aces as required (replacing them 1 with instead of 11) until we are within a
+  // valid blackjack score
+
+  while (aceCount > 0 && score > 21) {
+    // Replace an ace that was counted as 11 with 1 by minusing 10 from the score
+    score = score - 10;
+    aceCount = aceCount - 1;
+  }
+
+  return score;
+};
+
+const handHasBlackjack = (hand: Hand) => {
+  return hand.length === 2 && calculateHandScore(hand) === 21;
 };
 
 const determineGameResult = (state: GameState): GameResult => {
-  return "no_result";
+  const playerHandScore = calculateHandScore(state.playerHand);
+  const dealerHandScore = calculateHandScore(state.dealerHand);
+
+  // Cases of going bust, automatic win for the other player
+  if (playerHandScore > 21) {
+    return 'dealer_win';
+  }
+
+  if (dealerHandScore > 21) {
+    return 'player_win';
+  }
+
+  // If they both have blackhack (ace and face card) then it's a draw
+  if (
+    handHasBlackjack(state.playerHand) &&
+    handHasBlackjack(state.dealerHand)
+  ) {
+    return 'draw';
+  }
+
+  // If the player has blackjack then they win
+  if (handHasBlackjack(state.playerHand)) {
+    return 'player_win';
+  }
+
+  if (playerHandScore === dealerHandScore) {
+    return 'draw';
+  }
+
+  // Whoever has the largest score now wins
+  if (playerHandScore > dealerHandScore) {
+    return 'player_win';
+  } else {
+    return 'dealer_win';
+  }
 };
 
 //Player Actions
 const playerStands = (state: GameState): GameState => {
+  // If the dealer has a score of 16 or less then the dealer must take another card
+  const dealerHandScore = calculateHandScore(state.dealerHand);
+  if (dealerHandScore <= 16) {
+    const newDealerCard = takeCard(state.cardDeck).card;
+    const newState: GameState = {
+      ...state,
+      dealerHand: [...state.dealerHand, newDealerCard],
+    };
+
+    return newState;
+  }
+
   return {
     ...state,
     turn: "dealer_turn",
